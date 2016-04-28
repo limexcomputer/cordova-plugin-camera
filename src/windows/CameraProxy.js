@@ -77,14 +77,14 @@ var DEFAULT_ASPECT_RATIO = '1.8';
 var HIGHEST_POSSIBLE_Z_INDEX = 2147483647;
 
 // Resize method
-function resizeImage(successCallback, errorCallback, file, targetWidth, targetHeight, encodingType) {
+function resizeImage(successCallback, errorCallback, file, targetWidth, targetHeight, encodingType, rotation) {
     var tempPhotoFileName = "";
-    if (encodingType == Camera.EncodingType.PNG) {
+    if (encodingType === Camera.EncodingType.PNG) {
         tempPhotoFileName = "camera_cordova_temp_return.png";
     } else {
         tempPhotoFileName = "camera_cordova_temp_return.jpg";
     }
-
+    
     var storageFolder = getAppData().localFolder;
     file.copyAsync(storageFolder, file.name, Windows.Storage.NameCollisionOption.replaceExisting)
         .then(function (storageFile) {
@@ -95,23 +95,32 @@ function resizeImage(successCallback, errorCallback, file, targetWidth, targetHe
             var imageData = "data:" + file.contentType + ";base64," + strBase64;
             var image = new Image();
             image.src = imageData;
-            image.onload = function() {
+            image.onload = function () {
+                targetWidth = targetWidth || this.width;
+                targetHeight = targetHeight || this.height;
                 var ratio = Math.min(targetWidth / this.width, targetHeight / this.height);
+                
                 var imageWidth = ratio * this.width;
                 var imageHeight = ratio * this.height;
 
                 var canvas = document.createElement('canvas');
-                var storageFileName;
-
-                canvas.width = imageWidth;
-                canvas.height = imageHeight;
-
-                canvas.getContext("2d").drawImage(this, 0, 0, imageWidth, imageHeight);
-
+                
+                if (rotation === 90 || rotation === -90) {
+                    canvas.width = imageHeight;
+                    canvas.height = imageWidth;
+                } else {
+                    canvas.width = imageWidth;
+                    canvas.height = imageHeight;
+                }
+                var context2D = canvas.getContext("2d");
+                context2D.translate(imageWidth / 2, imageHeight / 2);
+                context2D.rotate(rotation * Math.PI/180);
+                context2D.drawImage(this, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+                
                 var fileContent = canvas.toDataURL(file.contentType).split(',')[1];
-
+                
                 var storageFolder = getAppData().localFolder;
-
+                var storageFileName;
                 storageFolder.createFileAsync(tempPhotoFileName, OptUnique)
                     .then(function (storagefile) {
                         var content = Windows.Security.Cryptography.CryptographicBuffer.decodeFromBase64String(fileContent);
@@ -130,7 +139,7 @@ function resizeImage(successCallback, errorCallback, file, targetWidth, targetHe
 }
 
 // Because of asynchronous method, so let the successCallback be called in it.
-function resizeImageBase64(successCallback, errorCallback, file, targetWidth, targetHeight) {
+function resizeImageBase64(successCallback, errorCallback, file, targetWidth, targetHeight, rotation) {
     fileIO.readBufferAsync(file).done( function(buffer) {
         var strBase64 = encodeToBase64String(buffer);
         var imageData = "data:" + file.contentType + ";base64," + strBase64;
@@ -138,18 +147,27 @@ function resizeImageBase64(successCallback, errorCallback, file, targetWidth, ta
         var image = new Image();
         image.src = imageData;
 
-        image.onload = function() {
+        image.onload = function () {
+            targetWidth = targetWidth || this.width;
+            targetHeight = targetHeight || this.height;
             var ratio = Math.min(targetWidth / this.width, targetHeight / this.height);
+
             var imageWidth = ratio * this.width;
             var imageHeight = ratio * this.height;
+
             var canvas = document.createElement('canvas');
-
-            canvas.width = imageWidth;
-            canvas.height = imageHeight;
-
-            var ctx = canvas.getContext("2d");
-            ctx.drawImage(this, 0, 0, imageWidth, imageHeight);
-
+            if (rotation === 90 || rotation === -90) {
+                canvas.width = imageHeight;
+                canvas.height = imageWidth;
+            } else {
+                canvas.width = imageWidth;
+                canvas.height = imageHeight;
+            }
+            var context2D = canvas.getContext("2d");
+            context2D.translate(imageWidth / 2, imageHeight / 2);
+            context2D.rotate(rotation * Math.PI / 180);
+            context2D.drawImage(this, -imageWidth / 2, -imageHeight / 2, this.width, this.height);
+            
             // The resized file ready for upload
             var finalFile = canvas.toDataURL(file.contentType);
 
@@ -706,12 +724,13 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
         targetHeight = args[4],
         encodingType = args[5],
         allowCrop = !!args[7],
+        correctOrientation = !!args[8],
         saveToPhotoAlbum = args[9],
         WMCapture = Windows.Media.Capture,
         cameraCaptureUI = new WMCapture.CameraCaptureUI();
-
+    
     cameraCaptureUI.photoSettings.allowCropping = allowCrop;
-
+    
     if (encodingType == Camera.EncodingType.PNG) {
         cameraCaptureUI.photoSettings.format = WMCapture.CameraCaptureUIPhotoFormat.png;
     } else {
@@ -745,18 +764,20 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
     cameraCaptureUI.photoSettings.maxResolution = maxRes;
 
     var cameraPicture;
-    
+    var orientation;
+    var options = {
+        destinationType: destinationType,
+        targetHeight: targetHeight,
+        targetWidth: targetWidth,
+        encodingType: encodingType,
+        saveToPhotoAlbum: saveToPhotoAlbum,
+        correctOrientation: correctOrientation
+    };
     // define focus handler for windows phone 10.0
     var savePhotoOnFocus = function () {
         window.removeEventListener("focus", savePhotoOnFocus);
         // call only when the app is in focus again
-        savePhoto(cameraPicture, {
-            destinationType: destinationType,
-            targetHeight: targetHeight,
-            targetWidth: targetWidth,
-            encodingType: encodingType,
-            saveToPhotoAlbum: saveToPhotoAlbum
-        }, successCallback, errorCallback);
+        savePhoto(cameraPicture, options, orientation, successCallback, errorCallback);
     };
 
     // if windows phone 10, add and delete focus eventHandler to capture the focus back from cameraUI to app
@@ -771,17 +792,13 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
             window.removeEventListener("focus", savePhotoOnFocus);
             return;
         }
+        var sensor = Windows.Devices.Sensors.SimpleOrientationSensor.getDefault();
+        orientation = (sensor && sensor.getCurrentOrientation()) || Windows.Devices.Sensors.SimpleOrientation.notRotated;
         cameraPicture = picture;
 
         // If not windows 10, call savePhoto() now. If windows 10, wait for the app to be in focus again
         if (navigator.appVersion.indexOf('Windows Phone 10.0') < 0) {
-            savePhoto(cameraPicture, {
-                destinationType: destinationType,
-                targetHeight: targetHeight,
-                targetWidth: targetWidth,
-                encodingType: encodingType,
-                saveToPhotoAlbum: saveToPhotoAlbum
-            }, successCallback, errorCallback);
+            savePhoto(cameraPicture, options, orientation, successCallback, errorCallback);
         }
     }, function () {
         errorCallback("Fail to capture a photo.");
@@ -789,20 +806,48 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
     });
 }
 
-function savePhoto(picture, options, successCallback, errorCallback) {
+function savePhoto(picture, options,orientation, successCallback, errorCallback) {
+    
+    var degrees = 0;
+    if (options.correctOrientation) {
+        switch (orientation) {
+            // portrait
+        case Windows.Devices.Sensors.SimpleOrientation.notRotated:
+            degrees = 90;
+            break;
+        // landscape
+        case Windows.Devices.Sensors.SimpleOrientation.rotated90DegreesCounterclockwise:
+            degrees = 0;
+            break;
+        // portrait-flipped (not supported by WinPhone Apps)
+        case Windows.Devices.Sensors.SimpleOrientation.rotated180DegreesCounterclockwise:
+            degrees = -90;
+            break;
+        // landscape-flipped
+        case Windows.Devices.Sensors.SimpleOrientation.rotated270DegreesCounterclockwise:
+            degrees = 180;
+            break;
+        // faceup & facedown
+        default:
+            // Falling back to portrait default
+            degrees = 90;
+            break;
+        }
+    }
+
     // success callback for capture operation
     var success = function(picture) {
         if (options.destinationType == Camera.DestinationType.FILE_URI || options.destinationType == Camera.DestinationType.NATIVE_URI) {
-            if (options.targetHeight > 0 && options.targetWidth > 0) {
-                resizeImage(successCallback, errorCallback, picture, options.targetWidth, options.targetHeight, options.encodingType);
+            if (options.targetHeight > 0 || options.targetWidth > 0 || degrees) {
+                resizeImage(successCallback, errorCallback, picture, options.targetWidth, options.targetHeight, options.encodingType, degrees);
             } else {
                 picture.copyAsync(getAppData().localFolder, picture.name, OptUnique).done(function (copiedFile) {
                     successCallback("ms-appdata:///local/" + copiedFile.name);
                 },errorCallback);
             }
         } else {
-            if (options.targetHeight > 0 && options.targetWidth > 0) {
-                resizeImageBase64(successCallback, errorCallback, picture, options.targetWidth, options.targetHeight);
+            if (options.targetHeight > 0 || options.targetWidth > 0 || degrees) {
+                resizeImageBase64(successCallback, errorCallback, picture, options.targetWidth, options.targetHeight, degrees);
             } else {
                 fileIO.readBufferAsync(picture).done(function(buffer) {
                     var strBase64 = encodeToBase64String(buffer);
@@ -874,5 +919,3 @@ function savePhoto(picture, options, successCallback, errorCallback) {
         }
     }
 }
-
-require("cordova/exec/proxy").add("Camera",module.exports);
