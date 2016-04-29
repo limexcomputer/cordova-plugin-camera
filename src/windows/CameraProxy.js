@@ -104,7 +104,6 @@ function resizeImage(successCallback, errorCallback, file, targetWidth, targetHe
                 var imageHeight = ratio * this.height;
 
                 var canvas = document.createElement('canvas');
-                
                 if (rotation === 90 || rotation === -90) {
                     canvas.width = imageHeight;
                     canvas.height = imageWidth;
@@ -113,9 +112,11 @@ function resizeImage(successCallback, errorCallback, file, targetWidth, targetHe
                     canvas.height = imageHeight;
                 }
                 var context2D = canvas.getContext("2d");
-                context2D.translate(imageWidth / 2, imageHeight / 2);
-                context2D.rotate(rotation * Math.PI/180);
+                context2D.translate(canvas.width / 2, canvas.height / 2);
+                context2D.rotate(rotation * Math.PI / 180);
+
                 context2D.drawImage(this, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+
                 
                 var fileContent = canvas.toDataURL(file.contentType).split(',')[1];
                 
@@ -166,8 +167,10 @@ function resizeImageBase64(successCallback, errorCallback, file, targetWidth, ta
             var context2D = canvas.getContext("2d");
             context2D.translate(imageWidth / 2, imageHeight / 2);
             context2D.rotate(rotation * Math.PI / 180);
-            context2D.drawImage(this, -imageWidth / 2, -imageHeight / 2, this.width, this.height);
-            
+
+            context2D.drawImage(this, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+
+
             // The resized file ready for upload
             var finalFile = canvas.toDataURL(file.contentType);
 
@@ -781,9 +784,9 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
     };
 
     // if windows phone 10, add and delete focus eventHandler to capture the focus back from cameraUI to app
-    if (navigator.appVersion.indexOf('Windows Phone 10.0') >= 0) { 
-        window.addEventListener("focus", savePhotoOnFocus);
-    }
+  //  if (navigator.appVersion.indexOf('Windows Phone 10.0') >= 0) { 
+  //      window.addEventListener("focus", savePhotoOnFocus);
+  //  }
 
     cameraCaptureUI.captureFileAsync(WMCapture.CameraCaptureUIMode.photo).done(function (picture) {
         if (!picture) {
@@ -796,10 +799,10 @@ function takePictureFromCameraWindows(successCallback, errorCallback, args) {
         orientation = (sensor && sensor.getCurrentOrientation()) || Windows.Devices.Sensors.SimpleOrientation.notRotated;
         cameraPicture = picture;
 
-        // If not windows 10, call savePhoto() now. If windows 10, wait for the app to be in focus again
-        if (navigator.appVersion.indexOf('Windows Phone 10.0') < 0) {
+        //// If not windows 10, call savePhoto() now. If windows 10, wait for the app to be in focus again
+    //    if (navigator.appVersion.indexOf('Windows Phone 10.0') < 0) {
             savePhoto(cameraPicture, options, orientation, successCallback, errorCallback);
-        }
+      //  }
     }, function () {
         errorCallback("Fail to capture a photo.");
         window.removeEventListener("focus", savePhotoOnFocus);
