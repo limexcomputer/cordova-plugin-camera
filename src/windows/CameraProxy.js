@@ -922,3 +922,5 @@ function savePhoto(picture, options,orientation, successCallback, errorCallback)
         }
     }
 }
+
+require("cordova/exec/proxy").add("Camera",module.exports);
