@@ -832,8 +832,8 @@ function savePhoto(picture, options,orientation, successCallback, errorCallback)
             break;
         // faceup & facedown
         default:
-            // Falling back to portrait default
-            degrees = 90;
+            // Falling back to landscape default
+            degrees = 0;
             break;
         }
     }
